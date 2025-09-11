@@ -1,5 +1,4 @@
 <?php
-// app/Models/Asset.php
 
 namespace App\Models;
 
@@ -11,9 +10,10 @@ class Asset extends Model
     use HasFactory;
 
     protected $fillable = [
-        'type',         // saham, crypto, emas, reksadana, properti
-        'code',         // BBCA, BTC, XAU
-        'name',         // Bank Central Asia, Bitcoin, Emas
+        'type_id',     // foreign key ke tabel types
+        'asset_code',        // BBCA, BTC, XAU
+        'asset_name',        // Bank Central Asia, Bitcoin, Emas
+        'quantity',    // jumlah lot, gram, coin, dll
         'created_by',
         'updated_by',
         'deleted',
@@ -21,7 +21,14 @@ class Asset extends Model
 
     protected $casts = [
         'deleted' => 'boolean',
+        'quantity' => 'decimal:8', // presisi tinggi untuk crypto/emas
     ];
+
+    // Relasi ke Type
+    public function type()
+    {
+        return $this->belongsTo(Type::class);
+    }
 
     // Relasi ke Investment
     public function investments()

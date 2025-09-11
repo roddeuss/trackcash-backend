@@ -9,6 +9,7 @@ use App\Http\Controllers\BankController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\TypeController;
 
 // ====================
 // AUTH
@@ -33,6 +34,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/banks/{id}', [BankController::class, 'show']);
     Route::put('/banks/{id}', [BankController::class, 'update']);
     Route::delete('/banks/{id}', [BankController::class, 'destroy']);
+
+    // ====================
+    // TYPES
+    // ====================
+    Route::get('/types', [TypeController::class, 'index']);
+    Route::post('/types', [TypeController::class, 'store']);
+    Route::get('/types/{id}', [TypeController::class, 'show']);
+    Route::put('/types/{id}', [TypeController::class, 'update']);
+    Route::delete('/types/{id}', [TypeController::class, 'destroy']);
 
     // ====================
     // ASSETS

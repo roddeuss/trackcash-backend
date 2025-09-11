@@ -15,7 +15,10 @@ class AssetController extends Controller
     public function index()
     {
         try {
-            $assets = Asset::where('deleted', false)->get();
+            // Ambil aset + relasi type
+            $assets = Asset::with('type')
+                ->where('deleted', false)
+                ->get();
 
             return response()->json([
                 'status' => true,
@@ -31,22 +34,25 @@ class AssetController extends Controller
         }
     }
 
+
     /**
      * Simpan asset baru.
      */
     public function store(Request $request)
     {
         $request->validate([
-            'type' => 'required|string|max:50',
-            'code' => 'required|string|max:20|unique:assets,code',
-            'name' => 'required|string|max:255',
+            'type_id' => 'required|exists:types,id',
+            'asset_code' => 'required|string|max:20|unique:assets,asset_code',
+            'asset_name' => 'required|string|max:255',
+            'quantity' => 'required|numeric|min:0',
         ]);
 
         try {
             $asset = Asset::create([
-                'type' => $request->type,
-                'code' => $request->code,
-                'name' => $request->name,
+                'type_id' => $request->type_id,
+                'asset_code' => $request->asset_code,
+                'asset_name' => $request->asset_name,
+                'quantity' => $request->quantity,
                 'created_by' => Auth::id(),
                 'deleted' => false,
             ]);
@@ -91,18 +97,20 @@ class AssetController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'type' => 'sometimes|string|max:50',
-            'code' => 'sometimes|string|max:20|unique:assets,code,' . $id,
-            'name' => 'sometimes|string|max:255',
+            'type_id' => 'sometimes|exists:types,id',
+            'asset_code' => 'sometimes|string|max:20|unique:assets,asset_code,' . $id,
+            'asset_name' => 'sometimes|string|max:255',
+            'quantity' => 'sometimes|numeric|min:0',
         ]);
 
         try {
             $asset = Asset::findOrFail($id);
 
             $asset->update([
-                'type' => $request->type ?? $asset->type,
-                'code' => $request->code ?? $asset->code,
-                'name' => $request->name ?? $asset->name,
+                'type_id' => $request->type_id ?? $asset->type_id,
+                'asset_code' => $request->asset_code ?? $asset->asset_code,
+                'asset_name' => $request->asset_name ?? $asset->asset_name,
+                'quantity' => $request->quantity ?? $asset->quantity,
                 'updated_by' => Auth::id(),
             ]);
 
