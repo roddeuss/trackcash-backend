@@ -83,5 +83,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ====================
     // DASHBOARD
     // ====================
-    // Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+    Route::get('/dashboard/cashflow', [DashboardController::class, 'cashflow']);
+    Route::get('/dashboard/allocation', [DashboardController::class, 'allocation']);
 });

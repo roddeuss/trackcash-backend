@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Bank;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Exception;
 
@@ -13,7 +14,22 @@ class BankController extends Controller
         try {
             $banks = Bank::where('user_id', auth()->id())
                 ->where('deleted', false)
-                ->get();
+                ->get()
+                ->map(function ($bank) {
+                    // 🔹 Ambil total transaksi terkait bank
+                    $income = Transaction::where('bank_id', $bank->id)
+                        ->whereHas('category', fn($q) => $q->where('type', 'income'))
+                        ->sum('amount');
+
+                    $expense = Transaction::where('bank_id', $bank->id)
+                        ->whereHas('category', fn($q) => $q->where('type', 'expense'))
+                        ->sum('amount');
+
+                    // 🔹 Saldo dinamis = saldo_awal + income - expense
+                    $bank->final_saldo = $bank->balance + $income - $expense;
+
+                    return $bank;
+                });
 
             return response()->json([
                 'success' => true,
@@ -75,6 +91,16 @@ class BankController extends Controller
                     'message' => 'Bank not found',
                 ], 404);
             }
+
+            $income = Transaction::where('bank_id', $bank->id)
+                ->whereHas('category', fn($q) => $q->where('type', 'income'))
+                ->sum('amount');
+
+            $expense = Transaction::where('bank_id', $bank->id)
+                ->whereHas('category', fn($q) => $q->where('type', 'expense'))
+                ->sum('amount');
+
+            $bank->final_saldo = $bank->balance + $income - $expense;
 
             return response()->json([
                 'success' => true,

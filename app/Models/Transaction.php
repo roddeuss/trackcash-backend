@@ -25,7 +25,7 @@ class Transaction extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
-        'date' => 'date',
+        'transaction_date' => 'datetime', // ✅ tambahkan ini
         'deleted' => 'boolean',
     ];
 
