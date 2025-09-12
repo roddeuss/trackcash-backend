@@ -12,12 +12,12 @@ class Transaction extends Model
 
     protected $fillable = [
         'user_id',
-        'bank_id',
-        'category_id',
-        'type',              // income, expense, investment_buy, investment_sell
-        'amount',
-        'date',
-        'note',
+        'bank_id',         // relasi ke bank (rekening sumber/tujuan)
+        'asset_id',        // opsional: relasi ke asset kalau transaksi terkait investasi
+        'category_id',     // income / expense / investment
+        'amount',          // jumlah uang
+        'description',     // catatan transaksi
+        'transaction_date',
         'created_by',
         'updated_by',
         'deleted',
@@ -30,18 +30,29 @@ class Transaction extends Model
     ];
 
     // Relasi
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
-
     public function bank()
     {
         return $this->belongsTo(Bank::class);
     }
 
+    public function asset()
+    {
+        return $this->belongsTo(Asset::class);
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    // 🔹 Hitung apakah transaksi ini income/expense
+    public function getIsIncomeAttribute()
+    {
+        return $this->category && $this->category->type === 'income';
+    }
+
+    public function getIsExpenseAttribute()
+    {
+        return $this->category && $this->category->type === 'expense';
     }
 }

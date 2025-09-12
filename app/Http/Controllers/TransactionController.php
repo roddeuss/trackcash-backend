@@ -15,22 +15,19 @@ class TransactionController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Transaction::with(['bank', 'category'])
+            $query = Transaction::with(['bank', 'category', 'asset'])
                 ->where('user_id', Auth::id())
                 ->where('deleted', false);
 
             // Filter opsional
-            if ($request->has('type')) {
-                $query->where('type', $request->type);
-            }
             if ($request->has('category_id')) {
                 $query->where('category_id', $request->category_id);
             }
             if ($request->has('start_date') && $request->has('end_date')) {
-                $query->whereBetween('date', [$request->start_date, $request->end_date]);
+                $query->whereBetween('transaction_date', [$request->start_date, $request->end_date]);
             }
 
-            $transactions = $query->orderBy('date', 'desc')->get();
+            $transactions = $query->orderBy('transaction_date', 'desc')->get();
 
             return response()->json([
                 'status' => true,
@@ -53,29 +50,29 @@ class TransactionController extends Controller
     {
         $request->validate([
             'bank_id' => 'nullable|exists:banks,id',
-            'category_id' => 'nullable|exists:categories,id',
-            'type' => 'required|in:income,expense,investment_buy,investment_sell',
+            'asset_id' => 'nullable|exists:assets,id',
+            'category_id' => 'required|exists:categories,id',
             'amount' => 'required|numeric|min:0',
-            'date' => 'required|date',
-            'note' => 'nullable|string',
+            'transaction_date' => 'required|date',
+            'description' => 'nullable|string',
         ]);
 
         try {
             $transaction = Transaction::create([
                 'user_id' => Auth::id(),
                 'bank_id' => $request->bank_id,
+                'asset_id' => $request->asset_id,
                 'category_id' => $request->category_id,
-                'type' => $request->type,
                 'amount' => $request->amount,
-                'date' => $request->date,
-                'note' => $request->note,
+                'transaction_date' => $request->transaction_date,
+                'description' => $request->description,
                 'created_by' => Auth::id(),
                 'deleted' => false,
             ]);
 
             return response()->json([
                 'status' => true,
-                'data' => $transaction->load(['bank', 'category']),
+                'data' => $transaction->load(['bank', 'category', 'asset']),
             ], 201);
         } catch (\Exception $e) {
             Log::error('Error creating transaction: ' . $e->getMessage());
@@ -93,7 +90,7 @@ class TransactionController extends Controller
     public function show($id)
     {
         try {
-            $transaction = Transaction::with(['bank', 'category'])
+            $transaction = Transaction::with(['bank', 'category', 'asset'])
                 ->where('user_id', Auth::id())
                 ->where('deleted', false)
                 ->findOrFail($id);
@@ -117,11 +114,11 @@ class TransactionController extends Controller
     {
         $request->validate([
             'bank_id' => 'nullable|exists:banks,id',
-            'category_id' => 'nullable|exists:categories,id',
-            'type' => 'sometimes|in:income,expense,investment_buy,investment_sell',
+            'asset_id' => 'nullable|exists:assets,id',
+            'category_id' => 'sometimes|exists:categories,id',
             'amount' => 'sometimes|numeric|min:0',
-            'date' => 'sometimes|date',
-            'note' => 'nullable|string',
+            'transaction_date' => 'sometimes|date',
+            'description' => 'nullable|string',
         ]);
 
         try {
@@ -131,17 +128,17 @@ class TransactionController extends Controller
 
             $transaction->update([
                 'bank_id' => $request->bank_id ?? $transaction->bank_id,
+                'asset_id' => $request->asset_id ?? $transaction->asset_id,
                 'category_id' => $request->category_id ?? $transaction->category_id,
-                'type' => $request->type ?? $transaction->type,
                 'amount' => $request->amount ?? $transaction->amount,
-                'date' => $request->date ?? $transaction->date,
-                'note' => $request->note ?? $transaction->note,
+                'transaction_date' => $request->transaction_date ?? $transaction->transaction_date,
+                'description' => $request->description ?? $transaction->description,
                 'updated_by' => Auth::id(),
             ]);
 
             return response()->json([
                 'status' => true,
-                'data' => $transaction->load(['bank', 'category']),
+                'data' => $transaction->load(['bank', 'category', 'asset']),
             ], 200);
         } catch (\Exception $e) {
             Log::error('Error updating transaction: ' . $e->getMessage());

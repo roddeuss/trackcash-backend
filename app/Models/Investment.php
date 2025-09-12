@@ -12,11 +12,10 @@ class Investment extends Model
 
     protected $fillable = [
         'user_id',
-        'asset_id',               // relasi ke master assets
-        'units',
-        'buy_price_per_unit',
+        'asset_id',            // relasi ke master assets
+        'units',               // jumlah unit (lot, gram, coin, dll)
+        'buy_price_per_unit',  // harga beli per unit
         'buy_date',
-        'current_price_per_unit',
         'created_by',
         'updated_by',
         'deleted',
@@ -38,5 +37,11 @@ class Investment extends Model
     public function asset()
     {
         return $this->belongsTo(Asset::class);
+    }
+
+    // 🔹 Hitung total nilai investasi berdasarkan transaksi
+    public function getTotalValueAttribute()
+    {
+        return $this->units * $this->buy_price_per_unit;
     }
 }
