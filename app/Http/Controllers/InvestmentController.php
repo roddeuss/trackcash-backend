@@ -2,23 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Asset;
 use App\Models\Investment;
+use App\Models\InvestmentTransaction;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class InvestmentController extends Controller
 {
-    /**
-     * List semua investasi milik user login.
-     */
     public function index()
     {
         try {
             $investments = Investment::with('asset')
                 ->where('user_id', Auth::id())
                 ->where('deleted', false)
-                ->orderBy('buy_date', 'desc')
                 ->get();
 
             return response()->json([
@@ -26,143 +27,205 @@ class InvestmentController extends Controller
                 'data' => $investments,
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error fetching investments: ' . $e->getMessage());
-
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to fetch investments',
-            ], 500);
+            Log::error('Error fetching investments', ['err' => $e]);
+            return response()->json($this->errorPayload('Failed to fetch investments', $e), 500);
         }
     }
 
     /**
-     * Tambah investasi baru.
+     * BUY
      */
     public function store(Request $request)
     {
         $request->validate([
-            'asset_id' => 'required|exists:assets,id',
-            'units' => 'required|numeric|min:0',
-            'buy_price_per_unit' => 'required|numeric|min:0',
-            'buy_date' => 'required|date',
-            'current_price_per_unit' => 'nullable|numeric|min:0',
+            'asset_id'         => 'required|exists:assets,id',
+            'units'            => 'required|numeric|min:0',
+            'price_per_unit'   => 'required|numeric|min:0',
+            'transaction_date' => 'sometimes|date', // opsional, kalau kosong -> now()
+            'bank_id'          => 'required|exists:banks,id',
+            'category_id'      => 'required|exists:categories,id',
         ]);
 
+        DB::beginTransaction();
         try {
-            $investment = Investment::create([
-                'user_id' => Auth::id(),
+            // Normalisasi tanggal → string agar tidak ada masalah serialisasi
+            $txDate = $request->filled('transaction_date')
+                ? Carbon::parse($request->transaction_date)
+                : now();
+            $txDateString = $txDate->toDateTimeString();
+
+            // Ambil asset sekali untuk description
+            $asset = Asset::findOrFail($request->asset_id);
+
+            // Ringkasan investasi (firstOrNew)
+            $investment = Investment::firstOrNew([
+                'user_id'  => Auth::id(),
                 'asset_id' => $request->asset_id,
-                'units' => $request->units,
-                'buy_price_per_unit' => $request->buy_price_per_unit,
-                'buy_date' => $request->buy_date,
-                'current_price_per_unit' => $request->current_price_per_unit,
-                'created_by' => Auth::id(),
-                'deleted' => false,
+                'deleted'  => false,
             ]);
 
+            $currentUnits = (float) ($investment->units ?? 0.0);
+            $currentAvg   = (float) ($investment->average_buy_price ?? 0.0);
+            $buyUnits     = (float) $request->units;
+            $buyPrice     = (float) $request->price_per_unit;
+
+            $totalCost    = ($currentUnits * $currentAvg) + ($buyUnits * $buyPrice);
+            $newUnits     = $currentUnits + $buyUnits;
+            $newAvg       = $newUnits > 0 ? $totalCost / $newUnits : 0.0;
+
+            $investment->units = $newUnits;
+            $investment->average_buy_price = $newAvg;
+            if (!$investment->exists) {
+                $investment->created_by = Auth::id();
+            }
+            $investment->updated_by = Auth::id();
+            $investment->save();
+
+            // Transaksi cashflow (negatif = uang keluar)
+            $transaction = Transaction::create([
+                'user_id'          => Auth::id(),
+                'bank_id'          => $request->bank_id,
+                'asset_id'         => $request->asset_id,
+                'category_id'      => $request->category_id,
+                'amount'           => ($buyUnits * $buyPrice),
+                'transaction_date' => $txDateString, // kirim string
+                'description'      => 'Buy Investment: ' . $asset->asset_code,
+                'created_by'       => Auth::id(),
+            ]);
+
+            InvestmentTransaction::create([
+                'investment_id'    => $investment->id,
+                'transaction_id'   => $transaction->id,
+                'type'             => 'buy',
+                'units'            => $buyUnits,
+                'price_per_unit'   => $buyPrice,
+                'transaction_date' => $txDateString, // kirim string
+                'created_by'       => Auth::id(),
+            ]);
+
+            DB::commit();
+
             return response()->json([
                 'status' => true,
-                'data' => $investment->load('asset'),
+                'data'   => $investment->load('asset'),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Error creating investment: ' . $e->getMessage());
-
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to create investment',
-            ], 500);
+            DB::rollBack();
+            Log::error('Error creating investment', ['err' => $e]);
+            return response()->json($this->errorPayload('Failed to create investment', $e), 500);
         }
     }
 
     /**
-     * Detail investasi.
+     * SELL
      */
-    public function show($id)
-    {
-        try {
-            $investment = Investment::with('asset')
-                ->where('user_id', Auth::id())
-                ->where('deleted', false)
-                ->findOrFail($id);
-
-            return response()->json([
-                'status' => true,
-                'data' => $investment,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Investment not found',
-            ], 404);
-        }
-    }
-
-    /**
-     * Update investasi.
-     */
-    public function update(Request $request, $id)
+    public function sell(Request $request, $id)
     {
         $request->validate([
-            'asset_id' => 'sometimes|exists:assets,id',
-            'units' => 'sometimes|numeric|min:0',
-            'buy_price_per_unit' => 'sometimes|numeric|min:0',
-            'buy_date' => 'sometimes|date',
-            'current_price_per_unit' => 'nullable|numeric|min:0',
+            'units'            => 'required|numeric|min:0',
+            'price_per_unit'   => 'required|numeric|min:0',
+            'transaction_date' => 'sometimes|date',
+            'bank_id'          => 'required|exists:banks,id',
+            'category_id'      => 'required|exists:categories,id',
         ]);
 
+        DB::beginTransaction();
         try {
+            $txDate = $request->filled('transaction_date')
+                ? Carbon::parse($request->transaction_date)
+                : now();
+            $txDateString = $txDate->toDateTimeString();
+
             $investment = Investment::where('user_id', Auth::id())
                 ->where('deleted', false)
                 ->findOrFail($id);
 
-            $investment->update([
-                'asset_id' => $request->asset_id ?? $investment->asset_id,
-                'units' => $request->units ?? $investment->units,
-                'buy_price_per_unit' => $request->buy_price_per_unit ?? $investment->buy_price_per_unit,
-                'buy_date' => $request->buy_date ?? $investment->buy_date,
-                'current_price_per_unit' => $request->current_price_per_unit ?? $investment->current_price_per_unit,
-                'updated_by' => Auth::id(),
+            $sellUnits = (float) $request->units;
+            $sellPrice = (float) $request->price_per_unit;
+
+            if ($sellUnits > (float) $investment->units) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Not enough units to sell',
+                ], 400);
+            }
+
+            $investment->units = (float) $investment->units - $sellUnits;
+            $investment->updated_by = Auth::id();
+            $investment->save();
+
+            $transaction = Transaction::create([
+                'user_id'          => Auth::id(),
+                'bank_id'          => $request->bank_id,
+                'asset_id'         => $investment->asset_id,
+                'category_id'      => $request->category_id,
+                'amount'           => $sellUnits * $sellPrice,
+                'transaction_date' => $txDateString,
+                'description'      => 'Sell Investment: ' . optional($investment->asset)->asset_code,
+                'created_by'       => Auth::id(),
             ]);
 
-            return response()->json([
-                'status' => true,
-                'data' => $investment->load('asset'),
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error updating investment: ' . $e->getMessage());
+            InvestmentTransaction::create([
+                'investment_id'    => $investment->id,
+                'transaction_id'   => $transaction->id,
+                'type'             => 'sell',
+                'units'            => $sellUnits,
+                'price_per_unit'   => $sellPrice,
+                'transaction_date' => $txDateString,
+                'created_by'       => Auth::id(),
+            ]);
+
+            $profitLoss = ($sellPrice - (float) $investment->average_buy_price) * $sellUnits;
+
+            DB::commit();
 
             return response()->json([
-                'status' => false,
-                'message' => 'Failed to update investment',
-            ], 500);
+                'status'      => true,
+                'data'        => $investment->load('asset'),
+                'profit_loss' => $profitLoss,
+            ], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error selling investment', ['err' => $e]);
+            return response()->json($this->errorPayload('Failed to sell investment', $e), 500);
         }
     }
 
-    /**
-     * Soft delete investasi.
-     */
     public function destroy($id)
     {
         try {
-            $investment = Investment::where('user_id', Auth::id())
-                ->findOrFail($id);
-
+            $investment = Investment::where('user_id', Auth::id())->findOrFail($id);
             $investment->update([
-                'deleted' => true,
+                'deleted'    => true,
                 'updated_by' => Auth::id(),
             ]);
 
             return response()->json([
-                'status' => true,
+                'status'  => true,
                 'message' => 'Investment deleted successfully',
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error deleting investment: ' . $e->getMessage());
-
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to delete investment',
-            ], 500);
+            Log::error('Error deleting investment', ['err' => $e]);
+            return response()->json($this->errorPayload('Failed to delete investment', $e), 500);
         }
+    }
+
+    /**
+     * Helper: payload error yang ramah debug saat non-production
+     */
+    private function errorPayload(string $fallback, \Throwable $e): array
+    {
+        $payload = ['status' => false, 'message' => $fallback];
+
+        // Kalau bukan production, sertakan detail biar kelihatan di Network tab
+        if (!app()->environment('production')) {
+            $payload['error'] = [
+                'type'    => get_class($e),
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ];
+        }
+        return $payload;
     }
 }

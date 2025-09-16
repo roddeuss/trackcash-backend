@@ -14,6 +14,7 @@ class Asset extends Model
         'asset_code',        // BBCA, BTC, XAU
         'asset_name',        // Bank Central Asia, Bitcoin, Emas
         'quantity',    // jumlah lot, gram, coin, dll
+        'lot_size',    // jumlah lot, gram, coin, dll
         'created_by',
         'updated_by',
         'deleted',

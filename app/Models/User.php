@@ -21,7 +21,6 @@ class User extends Authenticatable
         'deleted',
     ];
 
-
     protected $hidden = [
         'password',
         'remember_token',
@@ -30,6 +29,9 @@ class User extends Authenticatable
     protected $casts = [
         'deleted' => 'boolean',
     ];
+
+    // ✅ tambahkan ini
+    protected $appends = ['profile_picture_url'];
 
     // Relasi
     public function transactions()
@@ -40,5 +42,14 @@ class User extends Authenticatable
     public function investments()
     {
         return $this->hasMany(Investment::class);
+    }
+
+    // Accessor untuk URL foto profil
+    public function getProfilePictureUrlAttribute()
+    {
+        if ($this->profile_picture && file_exists(public_path('profile/' . $this->profile_picture))) {
+            return url('profile/' . $this->profile_picture);
+        }
+        return url('profile/default.png'); // fallback kalau tidak ada foto
     }
 }

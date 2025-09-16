@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TransactionController;
@@ -10,80 +9,75 @@ use App\Http\Controllers\AssetController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TypeController;
+use App\Http\Controllers\ProfileController;
 
 // ====================
-// AUTH
+// AUTH (public)
 // ====================
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login',    [AuthController::class, 'login']);
 
 // ====================
-// PROTECTED ROUTES
+// PROTECTED
 // ====================
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Auth
+    // ----- Auth -----
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/user', [AuthController::class, 'me']);
+    Route::get('/user',    [AuthController::class, 'me']);
 
-    // ====================
-    // BANKS
-    // ====================
-    Route::get('/banks', [BankController::class, 'index']);
-    Route::post('/banks', [BankController::class, 'store']);
-    Route::get('/banks/{id}', [BankController::class, 'show']);
-    Route::put('/banks/{id}', [BankController::class, 'update']);
-    Route::delete('/banks/{id}', [BankController::class, 'destroy']);
+    // ----- Banks -----
+    Route::get('/banks',        [BankController::class, 'index']);
+    Route::post('/banks',        [BankController::class, 'store']);
+    Route::get('/banks/{id}',   [BankController::class, 'show']);
+    Route::put('/banks/{id}',   [BankController::class, 'update']);
+    Route::delete('/banks/{id}',   [BankController::class, 'destroy']);
 
-    // ====================
-    // TYPES
-    // ====================
-    Route::get('/types', [TypeController::class, 'index']);
-    Route::post('/types', [TypeController::class, 'store']);
-    Route::get('/types/{id}', [TypeController::class, 'show']);
-    Route::put('/types/{id}', [TypeController::class, 'update']);
-    Route::delete('/types/{id}', [TypeController::class, 'destroy']);
+    // ----- Types -----
+    Route::get('/types',        [TypeController::class, 'index']);
+    Route::post('/types',        [TypeController::class, 'store']);
+    Route::get('/types/{id}',   [TypeController::class, 'show']);
+    Route::put('/types/{id}',   [TypeController::class, 'update']);
+    Route::delete('/types/{id}',   [TypeController::class, 'destroy']);
 
-    // ====================
-    // ASSETS
-    // ====================
-    Route::get('/assets', [AssetController::class, 'index']);
-    Route::post('/assets', [AssetController::class, 'store']);
-    Route::get('/assets/{id}', [AssetController::class, 'show']);
-    Route::put('/assets/{id}', [AssetController::class, 'update']);
-    Route::delete('/assets/{id}', [AssetController::class, 'destroy']);
+    // ----- Assets -----
+    Route::get('/assets',       [AssetController::class, 'index']);
+    Route::post('/assets',       [AssetController::class, 'store']);
+    Route::get('/assets/{id}',  [AssetController::class, 'show']);
+    Route::put('/assets/{id}',  [AssetController::class, 'update']);
+    Route::delete('/assets/{id}',  [AssetController::class, 'destroy']);
 
-    // ====================
-    // CATEGORIES
-    // ====================
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::post('/categories', [CategoryController::class, 'store']);
-    Route::get('/categories/{id}', [CategoryController::class, 'show']);
-    Route::put('/categories/{id}', [CategoryController::class, 'update']);
-    Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+    // ----- Categories -----
+    Route::get('/categories',       [CategoryController::class, 'index']);
+    Route::post('/categories',       [CategoryController::class, 'store']);
+    Route::get('/categories/{id}',  [CategoryController::class, 'show']);
+    Route::put('/categories/{id}',  [CategoryController::class, 'update']);
+    Route::delete('/categories/{id}',  [CategoryController::class, 'destroy']);
 
-    // ====================
-    // TRANSACTIONS
-    // ====================
-    Route::get('/transactions', [TransactionController::class, 'index']);
-    Route::post('/transactions', [TransactionController::class, 'store']);
-    Route::get('/transactions/{id}', [TransactionController::class, 'show']);
-    Route::put('/transactions/{id}', [TransactionController::class, 'update']);
-    Route::delete('/transactions/{id}', [TransactionController::class, 'destroy']);
+    // ----- Transactions -----
+    Route::get('/transactions',       [TransactionController::class, 'index']);
+    Route::post('/transactions',       [TransactionController::class, 'store']);
+    Route::get('/transactions/{id}',  [TransactionController::class, 'show']);
+    Route::put('/transactions/{id}',  [TransactionController::class, 'update']);
+    Route::delete('/transactions/{id}',  [TransactionController::class, 'destroy']);
 
-    // ====================
-    // INVESTMENTS
-    // ====================
-    Route::get('/investments', [InvestmentController::class, 'index']);
-    Route::post('/investments', [InvestmentController::class, 'store']);
-    Route::get('/investments/{id}', [InvestmentController::class, 'show']);
-    Route::put('/investments/{id}', [InvestmentController::class, 'update']);
-    Route::delete('/investments/{id}', [InvestmentController::class, 'destroy']);
+    // ----- Investments (BUY/SELL explicit) -----
+    Route::get('/investments',            [InvestmentController::class, 'index']);
+    Route::post('/investments',            [InvestmentController::class, 'store']);   // BUY
+    Route::get('/investments/{id}',       [InvestmentController::class, 'show']);
+    Route::put('/investments/{id}',       [InvestmentController::class, 'update']);  // optional: edit summary
+    Route::delete('/investments/{id}',       [InvestmentController::class, 'destroy']);
+    Route::post('/investments/{id}/sell',  [InvestmentController::class, 'sell']);    // SELL
 
-    // ====================
-    // DASHBOARD
-    // ====================
-    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
-    Route::get('/dashboard/cashflow', [DashboardController::class, 'cashflow']);
+    // ----- Profile -----
+    Route::get('/profile/me', [ProfileController::class, 'me']);
+    Route::put('/profile', [ProfileController::class, 'updateProfile']);
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
+    Route::put('/profile/currency', [ProfileController::class, 'updateCurrency']);
+    Route::post('/profile/picture', [ProfileController::class, 'updateProfilePicture']);
+
+    // ----- Dashboard -----
+    Route::get('/dashboard/summary',   [DashboardController::class, 'summary']);
+    Route::get('/dashboard/cashflow',  [DashboardController::class, 'cashflow']);
     Route::get('/dashboard/allocation', [DashboardController::class, 'allocation']);
 });

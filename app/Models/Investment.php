@@ -12,19 +12,16 @@ class Investment extends Model
 
     protected $fillable = [
         'user_id',
-        'asset_id',            // relasi ke master assets
-        'units',               // jumlah unit (lot, gram, coin, dll)
-        'buy_price_per_unit',  // harga beli per unit
-        'buy_date',
+        'asset_id',
+        'units',               // total units yang masih dimiliki
+        'average_buy_price',   // harga rata-rata beli
         'created_by',
         'updated_by',
         'deleted',
     ];
 
     protected $casts = [
-        'buy_date' => 'date',
-        'buy_price_per_unit' => 'decimal:2',
-        'current_price_per_unit' => 'decimal:2',
+        'average_buy_price' => 'decimal:2',
         'deleted' => 'boolean',
     ];
 
@@ -39,9 +36,27 @@ class Investment extends Model
         return $this->belongsTo(Asset::class);
     }
 
-    // 🔹 Hitung total nilai investasi berdasarkan transaksi
-    public function getTotalValueAttribute()
+    public function transactions()
     {
-        return $this->units * $this->buy_price_per_unit;
+        return $this->hasMany(InvestmentTransaction::class);
+    }
+
+    // 📊 Hitung nilai beli total (cost basis)
+    public function getTotalBuyValueAttribute()
+    {
+        return $this->units * $this->average_buy_price;
+    }
+
+    // 📊 Hitung nilai saat ini → API inject harga
+    public function getCurrentValue($marketPrice)
+    {
+        return $this->units * $marketPrice;
+    }
+
+    // 📊 Hitung Profit / Loss → API inject harga
+    public function getProfitLoss($marketPrice)
+    {
+        $cost = $this->units * $this->average_buy_price;
+        return ($this->units * $marketPrice) - $cost;
     }
 }
