@@ -17,7 +17,9 @@ class InvestmentController extends Controller
     public function index()
     {
         try {
-            $investments = Investment::with('asset')
+            $investments = Investment::with(['asset', 'transactions' => function($q) {
+                    $q->orderBy('transaction_date', 'desc');
+                }])
                 ->where('user_id', Auth::id())
                 ->where('deleted', false)
                 ->get();
@@ -31,6 +33,7 @@ class InvestmentController extends Controller
             return response()->json($this->errorPayload('Failed to fetch investments', $e), 500);
         }
     }
+
 
     /**
      * BUY

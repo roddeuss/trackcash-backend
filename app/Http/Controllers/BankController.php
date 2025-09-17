@@ -5,31 +5,63 @@ namespace App\Http\Controllers;
 use App\Models\Bank;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Exception;
 
 class BankController extends Controller
 {
-    public function index()
+    /**
+     * GET /api/banks
+     * Mengembalikan daftar bank + computed_balance (saldo akhir).
+     * computed_balance = balance (saldo awal) + sum(pergerakan transaksi)
+     */
+    public function index(Request $request)
     {
         try {
-            $banks = Bank::where('user_id', auth()->id())
+            // Ambil semua bank milik user
+            $banks = Bank::where('user_id', Auth::id())
                 ->where('deleted', false)
-                ->get()
-                ->map(function ($bank) {
-                    // 🔹 Ambil total transaksi terkait bank
-                    $income = Transaction::where('bank_id', $bank->id)
-                        ->whereHas('category', fn($q) => $q->where('type', 'income'))
-                        ->sum('amount');
+                ->orderBy('bank_name')
+                ->get();
 
-                    $expense = Transaction::where('bank_id', $bank->id)
-                        ->whereHas('category', fn($q) => $q->where('type', 'expense'))
-                        ->sum('amount');
+            if ($banks->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data'    => [],
+                ], 200);
+            }
 
-                    // 🔹 Saldo dinamis = saldo_awal + income - expense
-                    $bank->final_saldo = $bank->balance + $income - $expense;
+            // Agregasi pergerakan transaksi per bank_id dengan tanda yang benar
+            // income  -> +amount
+            // expense -> -ABS(amount)
+            $movements = Transaction::query()
+                ->leftJoin('categories', 'transactions.category_id', '=', 'categories.id')
+                ->where('transactions.user_id', Auth::id())
+                ->where('transactions.deleted', false)
+                ->whereIn('transactions.bank_id', $banks->pluck('id'))
+                ->groupBy('transactions.bank_id')
+                ->select(
+                    'transactions.bank_id',
+                    DB::raw("
+                        SUM(
+                            CASE
+                                WHEN categories.type = 'income'  THEN transactions.amount
+                                WHEN categories.type = 'expense' THEN -ABS(transactions.amount)
+                                ELSE 0
+                            END
+                        ) AS movement
+                    ")
+                )
+                ->pluck('movement', 'bank_id');
 
-                    return $bank;
-                });
+            // Gabungkan ke koleksi bank
+            $banks->transform(function ($b) use ($movements) {
+                $opening = (float) ($b->balance ?? 0);      // saldo awal (balance)
+                $movement = (float) ($movements[$b->id] ?? 0); // pergerakan transaksi
+                $b->computed_balance = round($opening + $movement, 2);
+                return $b;
+            });
 
             return response()->json([
                 'success' => true,
@@ -44,6 +76,59 @@ class BankController extends Controller
         }
     }
 
+    /**
+     * GET /api/banks/{id}
+     * Detail bank + computed_balance.
+     */
+    public function show($id)
+    {
+        try {
+            $bank = Bank::where('id', $id)
+                ->where('user_id', Auth::id())
+                ->where('deleted', false)
+                ->first();
+
+            if (!$bank) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bank not found',
+                ], 404);
+            }
+
+            $movement = Transaction::query()
+                ->leftJoin('categories', 'transactions.category_id', '=', 'categories.id')
+                ->where('transactions.user_id', Auth::id())
+                ->where('transactions.deleted', false)
+                ->where('transactions.bank_id', $bank->id)
+                ->select(
+                    DB::raw("
+                        SUM(
+                            CASE
+                                WHEN categories.type = 'income'  THEN transactions.amount
+                                WHEN categories.type = 'expense' THEN -ABS(transactions.amount)
+                                ELSE 0
+                            END
+                        ) AS movement
+                    ")
+                )
+                ->value('movement');
+
+            $opening = (float) ($bank->balance ?? 0);
+            $bank->computed_balance = round($opening + (float) ($movement ?? 0), 2);
+
+            return response()->json([
+                'success' => true,
+                'data'    => $bank,
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch bank',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function store(Request $request)
     {
         try {
@@ -51,16 +136,16 @@ class BankController extends Controller
                 'bank_name'      => 'required|string|max:255',
                 'account_number' => 'required|string|max:50',
                 'account_name'   => 'required|string|max:255',
-                'balance'        => 'required|numeric',
+                'balance'        => 'required|numeric', // saldo awal
             ]);
 
             $bank = Bank::create([
-                'user_id'        => auth()->id(),
+                'user_id'        => Auth::id(),
                 'bank_name'      => $request->bank_name,
                 'account_number' => $request->account_number,
                 'account_name'   => $request->account_name,
-                'balance'        => $request->balance,
-                'created_by'     => auth()->id(),
+                'balance'        => $request->balance, // saldo awal
+                'created_by'     => Auth::id(),
             ]);
 
             return response()->json([
@@ -77,53 +162,15 @@ class BankController extends Controller
         }
     }
 
-    public function show($id)
-    {
-        try {
-            $bank = Bank::where('id', $id)
-                ->where('user_id', auth()->id())
-                ->where('deleted', false)
-                ->first();
-
-            if (! $bank) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Bank not found',
-                ], 404);
-            }
-
-            $income = Transaction::where('bank_id', $bank->id)
-                ->whereHas('category', fn($q) => $q->where('type', 'income'))
-                ->sum('amount');
-
-            $expense = Transaction::where('bank_id', $bank->id)
-                ->whereHas('category', fn($q) => $q->where('type', 'expense'))
-                ->sum('amount');
-
-            $bank->final_saldo = $bank->balance + $income - $expense;
-
-            return response()->json([
-                'success' => true,
-                'data'    => $bank,
-            ], 200);
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch bank',
-                'error'   => $e->getMessage(),
-            ], 500);
-        }
-    }
-
     public function update(Request $request, $id)
     {
         try {
             $bank = Bank::where('id', $id)
-                ->where('user_id', auth()->id())
+                ->where('user_id', Auth::id())
                 ->where('deleted', false)
                 ->first();
 
-            if (! $bank) {
+            if (!$bank) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Bank not found',
@@ -134,12 +181,12 @@ class BankController extends Controller
                 'bank_name'      => 'sometimes|string|max:255',
                 'account_number' => 'sometimes|string|max:50',
                 'account_name'   => 'sometimes|string|max:255',
-                'balance'        => 'sometimes|numeric',
+                'balance'        => 'sometimes|numeric', // update saldo awal bila perlu
             ]);
 
             $bank->update(array_merge(
                 $request->only(['bank_name', 'account_number', 'account_name', 'balance']),
-                ['updated_by' => auth()->id()]
+                ['updated_by' => Auth::id()]
             ));
 
             return response()->json([
@@ -160,21 +207,20 @@ class BankController extends Controller
     {
         try {
             $bank = Bank::where('id', $id)
-                ->where('user_id', auth()->id())
+                ->where('user_id', Auth::id())
                 ->where('deleted', false)
                 ->first();
 
-            if (! $bank) {
+            if (!$bank) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Bank not found',
                 ], 404);
             }
 
-            // Soft delete via flag
             $bank->update([
                 'deleted'    => true,
-                'updated_by' => auth()->id(),
+                'updated_by' => Auth::id(),
             ]);
 
             return response()->json([

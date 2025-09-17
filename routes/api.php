@@ -10,6 +10,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TypeController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\BudgetController; // ⬅️ tambahkan ini
 
 // ====================
 // AUTH (public)
@@ -28,56 +29,63 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ----- Banks -----
     Route::get('/banks',        [BankController::class, 'index']);
-    Route::post('/banks',        [BankController::class, 'store']);
+    Route::post('/banks',       [BankController::class, 'store']);
     Route::get('/banks/{id}',   [BankController::class, 'show']);
     Route::put('/banks/{id}',   [BankController::class, 'update']);
-    Route::delete('/banks/{id}',   [BankController::class, 'destroy']);
+    Route::delete('/banks/{id}',[BankController::class, 'destroy']);
 
     // ----- Types -----
     Route::get('/types',        [TypeController::class, 'index']);
-    Route::post('/types',        [TypeController::class, 'store']);
+    Route::post('/types',       [TypeController::class, 'store']);
     Route::get('/types/{id}',   [TypeController::class, 'show']);
     Route::put('/types/{id}',   [TypeController::class, 'update']);
-    Route::delete('/types/{id}',   [TypeController::class, 'destroy']);
+    Route::delete('/types/{id}',[TypeController::class, 'destroy']);
 
     // ----- Assets -----
     Route::get('/assets',       [AssetController::class, 'index']);
-    Route::post('/assets',       [AssetController::class, 'store']);
+    Route::post('/assets',      [AssetController::class, 'store']);
     Route::get('/assets/{id}',  [AssetController::class, 'show']);
     Route::put('/assets/{id}',  [AssetController::class, 'update']);
-    Route::delete('/assets/{id}',  [AssetController::class, 'destroy']);
+    Route::delete('/assets/{id}',[AssetController::class, 'destroy']);
 
     // ----- Categories -----
     Route::get('/categories',       [CategoryController::class, 'index']);
-    Route::post('/categories',       [CategoryController::class, 'store']);
+    Route::post('/categories',      [CategoryController::class, 'store']);
     Route::get('/categories/{id}',  [CategoryController::class, 'show']);
     Route::put('/categories/{id}',  [CategoryController::class, 'update']);
-    Route::delete('/categories/{id}',  [CategoryController::class, 'destroy']);
+    Route::delete('/categories/{id}',[CategoryController::class, 'destroy']);
 
     // ----- Transactions -----
     Route::get('/transactions',       [TransactionController::class, 'index']);
-    Route::post('/transactions',       [TransactionController::class, 'store']);
+    Route::post('/transactions',      [TransactionController::class, 'store']);
     Route::get('/transactions/{id}',  [TransactionController::class, 'show']);
     Route::put('/transactions/{id}',  [TransactionController::class, 'update']);
-    Route::delete('/transactions/{id}',  [TransactionController::class, 'destroy']);
+    Route::delete('/transactions/{id}',[TransactionController::class, 'destroy']);
 
-    // ----- Investments (BUY/SELL explicit) -----
-    Route::get('/investments',            [InvestmentController::class, 'index']);
-    Route::post('/investments',            [InvestmentController::class, 'store']);   // BUY
-    Route::get('/investments/{id}',       [InvestmentController::class, 'show']);
-    Route::put('/investments/{id}',       [InvestmentController::class, 'update']);  // optional: edit summary
-    Route::delete('/investments/{id}',       [InvestmentController::class, 'destroy']);
-    Route::post('/investments/{id}/sell',  [InvestmentController::class, 'sell']);    // SELL
+    // ----- Investments -----
+    Route::get('/investments',          [InvestmentController::class, 'index']);
+    Route::post('/investments',         [InvestmentController::class, 'store']);   // BUY
+    Route::get('/investments/{id}',     [InvestmentController::class, 'show']);
+    Route::put('/investments/{id}',     [InvestmentController::class, 'update']);  // optional
+    Route::delete('/investments/{id}',  [InvestmentController::class, 'destroy']);
+    Route::post('/investments/{id}/sell',[InvestmentController::class, 'sell']);   // SELL
+
+    // ----- Budgets -----
+    Route::get('/budgets',        [BudgetController::class, 'index']);
+    Route::post('/budgets',       [BudgetController::class, 'store']);
+    Route::get('/budgets/{id}',   [BudgetController::class, 'show']);
+    Route::put('/budgets/{id}',   [BudgetController::class, 'update']);
+    Route::delete('/budgets/{id}',[BudgetController::class, 'destroy']);
 
     // ----- Profile -----
-    Route::get('/profile/me', [ProfileController::class, 'me']);
-    Route::put('/profile', [ProfileController::class, 'updateProfile']);
-    Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
-    Route::put('/profile/currency', [ProfileController::class, 'updateCurrency']);
-    Route::post('/profile/picture', [ProfileController::class, 'updateProfilePicture']);
+    Route::get('/profile/me',          [ProfileController::class, 'me']);
+    Route::put('/profile',             [ProfileController::class, 'updateProfile']);
+    Route::put('/profile/password',    [ProfileController::class, 'updatePassword']);
+    Route::put('/profile/currency',    [ProfileController::class, 'updateCurrency']);
+    Route::post('/profile/picture',    [ProfileController::class, 'updateProfilePicture']);
 
     // ----- Dashboard -----
-    Route::get('/dashboard/summary',   [DashboardController::class, 'summary']);
+    Route::get('/dashboard/summary',   [DashboardControlgitler::class, 'summary']);
     Route::get('/dashboard/cashflow',  [DashboardController::class, 'cashflow']);
-    Route::get('/dashboard/allocation', [DashboardController::class, 'allocation']);
+    Route::get('/dashboard/allocation',[DashboardController::class, 'allocation']);
 });
