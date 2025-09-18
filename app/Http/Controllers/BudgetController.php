@@ -36,7 +36,7 @@ class BudgetController extends Controller
             }
 
             $budgets->transform(function (Budget $b) {
-                [$start, $end] = $this->getBudgetWindow($b);
+                [$start, $end] = BudgetHelper::getBudgetWindow($b);
 
                 // Total pengeluaran untuk kategori ini pada window budget
                 $spent = (float) Transaction::query()
@@ -142,7 +142,7 @@ class BudgetController extends Controller
                 ->where('deleted', false)
                 ->findOrFail($id);
 
-            [$start, $end] = $this->getBudgetWindow($budget);
+            [$start, $end] = BudgetHelper::getBudgetWindow($budget);
 
             $spent = (float) Transaction::query()
                 ->where('transactions.user_id', Auth::id())
