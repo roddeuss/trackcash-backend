@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Budget;
 use App\Models\Transaction;
+use App\Models\Notification;            // ⬅️ tambahkan
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -11,17 +12,24 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Helpers\BudgetHelper;
-
+use App\Services\NotificationService;   // ⬅️ tambahkan
 
 class BudgetController extends Controller
 {
     /**
      * GET /api/budgets
      * List budgets milik user + computed fields (spent, remaining, progress).
+     * Support ?threshold=80 atau 0.8 untuk trigger notifikasi.
      */
     public function index(Request $request)
     {
         try {
+            // Normalisasi threshold: bisa 80 (persen) atau 0.8
+            $thr = $request->has('threshold') ? (float)$request->get('threshold') : 0.8;
+            $threshold = $thr > 1 ? $thr / 100 : $thr;
+            if ($threshold <= 0) $threshold = 0.8;
+            if ($threshold > 1)  $threshold = 1;
+
             $budgets = Budget::with('category')
                 ->where('user_id', Auth::id())
                 ->where('deleted', false)
@@ -35,12 +43,14 @@ class BudgetController extends Controller
                 ], 200);
             }
 
-            $budgets->transform(function (Budget $b) {
+            $userId = Auth::id();
+
+            $budgets->transform(function (Budget $b) use ($threshold, $userId) {
                 [$start, $end] = BudgetHelper::getBudgetWindow($b);
 
                 // Total pengeluaran untuk kategori ini pada window budget
                 $spent = (float) Transaction::query()
-                    ->where('transactions.user_id', Auth::id())
+                    ->where('transactions.user_id', $userId)
                     ->where('transactions.deleted', false)
                     ->where('transactions.category_id', $b->category_id)
                     ->whereBetween('transactions.transaction_date', [$start, $end])
@@ -51,9 +61,54 @@ class BudgetController extends Controller
                 $remaining  = round(max(0, (float)$b->amount - $spent), 2);
                 $progress   = (float)$b->amount > 0
                     ? round(min(100, ($spent / (float)$b->amount) * 100), 2)
-                    : 0;
+                    : 0.0;
 
-                // tambahkan properti terhitung
+                // 🔔 Notifikasi "hampir over budget" (sekali per window)
+                try {
+                    if ((float)$b->amount > 0 && $spent >= ((float)$b->amount * $threshold)) {
+                        $windowStartKey = $start->toDateString();
+                        $windowEndKey   = $end->toDateString();
+
+                        $already = Notification::query()
+                            ->where('user_id', $userId)
+                            ->where('type', 'budget_threshold')
+                            ->where('is_read', false)
+                            ->where('data->budget_id', $b->id)
+                            ->where('data->window_start', $windowStartKey)
+                            ->where('data->window_end', $windowEndKey)
+                            ->exists();
+
+                        if (!$already) {
+                            $pct = $progress;
+                            $cat = optional($b->category)->name ?: '-';
+                            $msg = 'Budget kategori "'.$cat.'" sudah '.$pct.'% terpakai ('
+                                 . number_format($spent, 2, ',', '.') . ' dari '
+                                 . number_format((float)$b->amount, 2, ',', '.') . ').';
+
+                            NotificationService::create(
+                                $userId,
+                                'budget_threshold',
+                                'Budget Hampir Habis',
+                                $msg,
+                                [
+                                    'budget_id'    => $b->id,
+                                    'category_id'  => $b->category_id,
+                                    'window_start' => $windowStartKey,
+                                    'window_end'   => $windowEndKey,
+                                    'progress'     => $pct,
+                                    'spent'        => $spent,
+                                    'amount'       => (float)$b->amount,
+                                ],
+                                'warning',
+                                null
+                            );
+                        }
+                    }
+                } catch (\Throwable $nex) {
+                    Log::warning('Budget threshold notification failed: '.$nex->getMessage());
+                }
+
+                // Tambahkan properti terhitung ke model (agar ikut terkirim)
                 $b->spent     = $spent;
                 $b->remaining = $remaining;
                 $b->progress  = $progress;
@@ -94,7 +149,6 @@ class BudgetController extends Controller
         ]);
 
         try {
-            // Untuk custom, wajib ada start/end
             if ($request->period === 'custom') {
                 if (!$request->start_date || !$request->end_date) {
                     return response()->json([
@@ -132,11 +186,17 @@ class BudgetController extends Controller
 
     /**
      * GET /api/budgets/{id}
-     * Detail budget + computed fields.
+     * Detail budget + computed fields (+ notifikasi jika mendekati budget).
+     * Support ?threshold=80 atau 0.8.
      */
-    public function show($id)
+    public function show($id, Request $request)
     {
         try {
+            $thr = $request->has('threshold') ? (float)$request->get('threshold') : 0.8;
+            $threshold = $thr > 1 ? $thr / 100 : $thr;
+            if ($threshold <= 0) $threshold = 0.8;
+            if ($threshold > 1)  $threshold = 1;
+
             $budget = Budget::with('category')
                 ->where('user_id', Auth::id())
                 ->where('deleted', false)
@@ -157,6 +217,51 @@ class BudgetController extends Controller
             $progress  = (float)$budget->amount > 0
                 ? round(min(100, ($spent / (float)$budget->amount) * 100), 2)
                 : 0;
+
+            // 🔔 Notifikasi untuk budget ini (sekali per window)
+            try {
+                if ((float)$budget->amount > 0 && $spent >= ((float)$budget->amount * $threshold)) {
+                    $windowStartKey = $start->toDateString();
+                    $windowEndKey   = $end->toDateString();
+
+                    $already = Notification::query()
+                        ->where('user_id', Auth::id())
+                        ->where('type', 'budget_threshold')
+                        ->where('is_read', false)
+                        ->where('data->budget_id', $budget->id)
+                        ->where('data->window_start', $windowStartKey)
+                        ->where('data->window_end', $windowEndKey)
+                        ->exists();
+
+                    if (!$already) {
+                        $pct = $progress;
+                        $cat = optional($budget->category)->name ?: '-';
+                        $msg = 'Budget kategori "'.$cat.'" sudah '.$pct.'% terpakai ('
+                             . number_format($spent, 2, ',', '.') . ' dari '
+                             . number_format((float)$budget->amount, 2, ',', '.') . ').';
+
+                        NotificationService::create(
+                            Auth::id(),
+                            'budget_threshold',
+                            'Budget Hampir Habis',
+                            $msg,
+                            [
+                                'budget_id'    => $budget->id,
+                                'category_id'  => $budget->category_id,
+                                'window_start' => $windowStartKey,
+                                'window_end'   => $windowEndKey,
+                                'progress'     => $pct,
+                                'spent'        => $spent,
+                                'amount'       => (float)$budget->amount,
+                            ],
+                            'warning',
+                            null
+                        );
+                    }
+                }
+            } catch (\Throwable $nex) {
+                Log::warning('Budget threshold notification (show) failed: '.$nex->getMessage());
+            }
 
             $payload = $budget->toArray();
             $payload['spent']     = $spent;
@@ -212,7 +317,6 @@ class BudgetController extends Controller
                     ], 422);
                 }
             } else {
-                // non-custom: clear custom dates
                 $start_date = null;
                 $end_date   = null;
             }

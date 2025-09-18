@@ -11,29 +11,32 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
+use App\Services\NotificationService; // ⬅️ tambahkan ini
 
 class InvestmentController extends Controller
 {
     public function index()
     {
         try {
-            $investments = Investment::with(['asset', 'transactions' => function($q) {
-                    $q->orderBy('transaction_date', 'desc');
-                }])
+            $investments = Investment::with([
+                    'asset',
+                    'transactions' => function ($q) {
+                        $q->orderBy('transaction_date', 'desc');
+                    },
+                ])
                 ->where('user_id', Auth::id())
                 ->where('deleted', false)
                 ->get();
 
             return response()->json([
                 'status' => true,
-                'data' => $investments,
+                'data'   => $investments,
             ], 200);
         } catch (\Exception $e) {
             Log::error('Error fetching investments', ['err' => $e]);
             return response()->json($this->errorPayload('Failed to fetch investments', $e), 500);
         }
     }
-
 
     /**
      * BUY
@@ -51,13 +54,11 @@ class InvestmentController extends Controller
 
         DB::beginTransaction();
         try {
-            // Normalisasi tanggal → string agar tidak ada masalah serialisasi
             $txDate = $request->filled('transaction_date')
                 ? Carbon::parse($request->transaction_date)
                 : now();
             $txDateString = $txDate->toDateTimeString();
 
-            // Ambil asset sekali untuk description
             $asset = Asset::findOrFail($request->asset_id);
 
             // Ringkasan investasi (firstOrNew)
@@ -84,27 +85,53 @@ class InvestmentController extends Controller
             $investment->updated_by = Auth::id();
             $investment->save();
 
-            // Transaksi cashflow (negatif = uang keluar)
+            // Transaksi cashflow
             $transaction = Transaction::create([
                 'user_id'          => Auth::id(),
                 'bank_id'          => $request->bank_id,
                 'asset_id'         => $request->asset_id,
                 'category_id'      => $request->category_id,
                 'amount'           => ($buyUnits * $buyPrice),
-                'transaction_date' => $txDateString, // kirim string
+                'transaction_date' => $txDateString,
                 'description'      => 'Buy Investment: ' . $asset->asset_code,
                 'created_by'       => Auth::id(),
             ]);
 
+            // Detail transaksi investasi
             InvestmentTransaction::create([
                 'investment_id'    => $investment->id,
                 'transaction_id'   => $transaction->id,
                 'type'             => 'buy',
                 'units'            => $buyUnits,
                 'price_per_unit'   => $buyPrice,
-                'transaction_date' => $txDateString, // kirim string
+                'transaction_date' => $txDateString,
                 'created_by'       => Auth::id(),
             ]);
+
+            // 🔔 Notifikasi BUY
+            try {
+                $msg = 'Beli ' . ($asset->asset_code ?? 'ASSET') . ' — ' . number_format($buyUnits, 2, ',', '.') .
+                       ' @ ' . number_format($buyPrice, 2, ',', '.') .
+                       ' (Total: ' . number_format($buyUnits * $buyPrice, 2, ',', '.') . ')';
+                NotificationService::create(
+                    Auth::id(),
+                    'investment_buy',
+                    'Pembelian Investasi',
+                    $msg,
+                    [
+                        'investment_id'  => $investment->id,
+                        'transaction_id' => $transaction->id,
+                        'asset_id'       => $asset->id,
+                        'units'          => $buyUnits,
+                        'price'          => $buyPrice,
+                        'when'           => $txDateString,
+                    ],
+                    'success',
+                    null
+                );
+            } catch (\Throwable $nex) {
+                Log::warning('Create notification failed (buy): '.$nex->getMessage());
+            }
 
             DB::commit();
 
@@ -141,6 +168,7 @@ class InvestmentController extends Controller
 
             $investment = Investment::where('user_id', Auth::id())
                 ->where('deleted', false)
+                ->with('asset')
                 ->findOrFail($id);
 
             $sellUnits = (float) $request->units;
@@ -180,6 +208,33 @@ class InvestmentController extends Controller
 
             $profitLoss = ($sellPrice - (float) $investment->average_buy_price) * $sellUnits;
 
+            // 🔔 Notifikasi SELL
+            try {
+                $assetCode = optional($investment->asset)->asset_code ?? 'ASSET';
+                $msg = 'Jual ' . $assetCode . ' — ' . number_format($sellUnits, 2, ',', '.') .
+                       ' @ ' . number_format($sellPrice, 2, ',', '.') .
+                       ' (P/L: ' . number_format($profitLoss, 2, ',', '.') . ')';
+                NotificationService::create(
+                    Auth::id(),
+                    'investment_sell',
+                    'Penjualan Investasi',
+                    $msg,
+                    [
+                        'investment_id'  => $investment->id,
+                        'transaction_id' => $transaction->id,
+                        'asset_id'       => $investment->asset_id,
+                        'units'          => $sellUnits,
+                        'price'          => $sellPrice,
+                        'pl'             => $profitLoss,
+                        'when'           => $txDateString,
+                    ],
+                    ($profitLoss >= 0 ? 'success' : 'warning'),
+                    null
+                );
+            } catch (\Throwable $nex) {
+                Log::warning('Create notification failed (sell): '.$nex->getMessage());
+            }
+
             DB::commit();
 
             return response()->json([
@@ -197,11 +252,32 @@ class InvestmentController extends Controller
     public function destroy($id)
     {
         try {
-            $investment = Investment::where('user_id', Auth::id())->findOrFail($id);
+            $investment = Investment::where('user_id', Auth::id())->with('asset')->findOrFail($id);
             $investment->update([
                 'deleted'    => true,
                 'updated_by' => Auth::id(),
             ]);
+
+            // 🔔 Notifikasi DELETE
+            try {
+                $assetCode = optional($investment->asset)->asset_code ?? 'ASSET';
+                $msg = 'Investasi ' . $assetCode . ' telah dihapus (soft delete).';
+                NotificationService::create(
+                    Auth::id(),
+                    'investment_deleted',
+                    'Hapus Investasi',
+                    $msg,
+                    [
+                        'investment_id' => $investment->id,
+                        'asset_id'      => $investment->asset_id,
+                        'when'          => now()->toDateTimeString(),
+                    ],
+                    'info',
+                    null
+                );
+            } catch (\Throwable $nex) {
+                Log::warning('Create notification failed (delete): '.$nex->getMessage());
+            }
 
             return response()->json([
                 'status'  => true,
@@ -220,7 +296,6 @@ class InvestmentController extends Controller
     {
         $payload = ['status' => false, 'message' => $fallback];
 
-        // Kalau bukan production, sertakan detail biar kelihatan di Network tab
         if (!app()->environment('production')) {
             $payload['error'] = [
                 'type'    => get_class($e),

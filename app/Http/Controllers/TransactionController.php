@@ -7,10 +7,14 @@ use App\Models\Transaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Helpers\DateRangeHelper;
+use App\Services\NotificationService; // ⬅️ use the static service
 use Carbon\Carbon;
 
 class TransactionController extends Controller
 {
+    /**
+     * List semua transaksi milik user login (support filter).
+     */
     public function index(Request $request)
     {
         try {
@@ -18,19 +22,19 @@ class TransactionController extends Controller
                 ->where('user_id', Auth::id())
                 ->where('deleted', false);
 
-            // Filter opsional berdasarkan category_id
+            // Filter opsional
             if ($request->filled('category_id')) {
                 $query->where('category_id', $request->category_id);
             }
 
-            // Filter berdasarkan start_date & end_date (string dd-mm-yyyy HH:mm:ss)
+            // Filter tanggal dd-mm-YYYY HH:mm:ss
             if ($request->filled('start_date') && $request->filled('end_date')) {
                 $start = Carbon::createFromFormat('d-m-Y H:i:s', $request->start_date)->startOfSecond();
                 $end   = Carbon::createFromFormat('d-m-Y H:i:s', $request->end_date)->endOfSecond();
                 $query->whereBetween('transaction_date', [$start, $end]);
             }
 
-            // Filter berdasarkan range (day, week, month, year)
+            // Filter range (day|week|month|year)
             if ($request->filled('range')) {
                 [$start, $end] = DateRangeHelper::getDateRange($request->range);
                 $query->whereBetween('transaction_date', [$start, $end]);
@@ -43,7 +47,7 @@ class TransactionController extends Controller
                 'data'   => $transactions,
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error fetching transactions: ' . $e->getMessage());
+            Log::error('Error fetching transactions: '.$e->getMessage());
 
             return response()->json([
                 'status'  => false,
@@ -52,7 +56,9 @@ class TransactionController extends Controller
         }
     }
 
-
+    /**
+     * Tambah transaksi baru.
+     */
     public function store(Request $request)
     {
         $request->validate([
@@ -77,12 +83,23 @@ class TransactionController extends Controller
                 'deleted'          => false,
             ]);
 
+            // 🔔 Notifikasi (static call)
+            NotificationService::create(
+                userId:   Auth::id(),
+                type:     'transaction_created',
+                title:    'Transaksi Baru',
+                message:  'Transaksi sebesar '.number_format((float)$transaction->amount, 0, ',', '.').' berhasil dibuat.',
+                data:     ['transaction_id' => $transaction->id, 'category_id' => $transaction->category_id],
+                severity: 'success',
+                actionUrl: null
+            );
+
             return response()->json([
                 'status' => true,
                 'data'   => $transaction->load(['bank', 'category', 'asset']),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Error creating transaction: ' . $e->getMessage());
+            Log::error('Error creating transaction: '.$e->getMessage());
 
             return response()->json([
                 'status'  => false,
@@ -91,6 +108,9 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Detail transaksi.
+     */
     public function show($id)
     {
         try {
@@ -111,6 +131,9 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Update transaksi.
+     */
     public function update(Request $request, $id)
     {
         $request->validate([
@@ -139,12 +162,23 @@ class TransactionController extends Controller
                 'updated_by'       => Auth::id(),
             ]);
 
+            // 🔔 Notifikasi update
+            NotificationService::create(
+                userId:   Auth::id(),
+                type:     'transaction_updated',
+                title:    'Transaksi Diperbarui',
+                message:  "Transaksi #{$transaction->id} berhasil diperbarui.",
+                data:     ['transaction_id' => $transaction->id],
+                severity: 'info',
+                actionUrl: null
+            );
+
             return response()->json([
                 'status' => true,
                 'data'   => $transaction->load(['bank', 'category', 'asset']),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error updating transaction: ' . $e->getMessage());
+            Log::error('Error updating transaction: '.$e->getMessage());
 
             return response()->json([
                 'status'  => false,
@@ -153,6 +187,9 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Soft delete transaksi.
+     */
     public function destroy($id)
     {
         try {
@@ -163,12 +200,23 @@ class TransactionController extends Controller
                 'updated_by' => Auth::id(),
             ]);
 
+            // 🔔 Notifikasi delete
+            NotificationService::create(
+                userId:   Auth::id(),
+                type:     'transaction_deleted',
+                title:    'Transaksi Dihapus',
+                message:  "Transaksi #{$transaction->id} berhasil dihapus.",
+                data:     ['transaction_id' => $transaction->id],
+                severity: 'warning',
+                actionUrl: null
+            );
+
             return response()->json([
                 'status'  => true,
                 'message' => 'Transaction deleted successfully',
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error deleting transaction: ' . $e->getMessage());
+            Log::error('Error deleting transaction: '.$e->getMessage());
 
             return response()->json([
                 'status'  => false,
