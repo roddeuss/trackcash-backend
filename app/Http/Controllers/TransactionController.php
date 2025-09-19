@@ -7,7 +7,8 @@ use App\Models\Transaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Helpers\DateRangeHelper;
-use App\Services\NotificationService; // ⬅️ use the static service
+use App\Services\NotificationService; // static service
+use App\Services\BudgetService;       // ⬅️ panggil BudgetService
 use Carbon\Carbon;
 
 class TransactionController extends Controller
@@ -83,16 +84,19 @@ class TransactionController extends Controller
                 'deleted'          => false,
             ]);
 
-            // 🔔 Notifikasi (static call)
+            // 🔔 Notifikasi transaksi baru (positional args → aman untuk PHP 7.4)
             NotificationService::create(
-                userId:   Auth::id(),
-                type:     'transaction_created',
-                title:    'Transaksi Baru',
-                message:  'Transaksi sebesar '.number_format((float)$transaction->amount, 0, ',', '.').' berhasil dibuat.',
-                data:     ['transaction_id' => $transaction->id, 'category_id' => $transaction->category_id],
-                severity: 'success',
-                actionUrl: null
+                Auth::id(),
+                'transaction_created',
+                'Transaksi Baru',
+                'Transaksi sebesar '.number_format((float)$transaction->amount, 0, ',', '.').' berhasil dibuat.',
+                ['transaction_id' => $transaction->id, 'category_id' => $transaction->category_id],
+                'success',
+                null
             );
+
+            // 🔎 Evaluasi budget terkait kategori transaksi ini (buat notif threshold jika perlu)
+            BudgetService::onTransactionChanged(Auth::id(), (int) $transaction->category_id);
 
             return response()->json([
                 'status' => true,
@@ -150,6 +154,8 @@ class TransactionController extends Controller
                 ->where('deleted', false)
                 ->findOrFail($id);
 
+            $oldCategoryId = (int) $transaction->category_id;
+
             $transaction->update([
                 'bank_id'          => $request->bank_id ?? $transaction->bank_id,
                 'asset_id'         => $request->asset_id ?? $transaction->asset_id,
@@ -164,14 +170,21 @@ class TransactionController extends Controller
 
             // 🔔 Notifikasi update
             NotificationService::create(
-                userId:   Auth::id(),
-                type:     'transaction_updated',
-                title:    'Transaksi Diperbarui',
-                message:  "Transaksi #{$transaction->id} berhasil diperbarui.",
-                data:     ['transaction_id' => $transaction->id],
-                severity: 'info',
-                actionUrl: null
+                Auth::id(),
+                'transaction_updated',
+                'Transaksi Diperbarui',
+                "Transaksi #{$transaction->id} berhasil diperbarui.",
+                ['transaction_id' => $transaction->id],
+                'info',
+                null
             );
+
+            // 🔎 Evaluasi budget untuk kategori terkait (kalau kategori berubah, evaluasi keduanya)
+            $newCategoryId = (int) $transaction->category_id;
+            BudgetService::onTransactionChanged(Auth::id(), $newCategoryId);
+            if ($newCategoryId !== $oldCategoryId) {
+                BudgetService::onTransactionChanged(Auth::id(), $oldCategoryId);
+            }
 
             return response()->json([
                 'status' => true,
@@ -194,6 +207,7 @@ class TransactionController extends Controller
     {
         try {
             $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
+            $categoryId  = (int) $transaction->category_id;
 
             $transaction->update([
                 'deleted'    => true,
@@ -202,14 +216,17 @@ class TransactionController extends Controller
 
             // 🔔 Notifikasi delete
             NotificationService::create(
-                userId:   Auth::id(),
-                type:     'transaction_deleted',
-                title:    'Transaksi Dihapus',
-                message:  "Transaksi #{$transaction->id} berhasil dihapus.",
-                data:     ['transaction_id' => $transaction->id],
-                severity: 'warning',
-                actionUrl: null
+                Auth::id(),
+                'transaction_deleted',
+                'Transaksi Dihapus',
+                "Transaksi #{$transaction->id} berhasil dihapus.",
+                ['transaction_id' => $transaction->id],
+                'warning',
+                null
             );
+
+            // 🔎 Evaluasi budget lagi karena pengeluaran berubah
+            BudgetService::onTransactionChanged(Auth::id(), $categoryId);
 
             return response()->json([
                 'status'  => true,

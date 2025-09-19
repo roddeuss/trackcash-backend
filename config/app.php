@@ -16,6 +16,7 @@ return [
     */
 
     'name' => env('APP_NAME', 'Laravel'),
+    'budget_threshold' => (int) env('APP_BUDGET_THRESHOLD', 80),
 
     /*
     |--------------------------------------------------------------------------
