@@ -12,6 +12,8 @@ use App\Http\Controllers\TypeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\NotificationController; // ⬅️ tambahkan ini
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RecurringTransactionController;
 
 // ====================
 // AUTH (public)
@@ -96,4 +98,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/summary',   [DashboardController::class, 'summary']);
     Route::get('/dashboard/cashflow',  [DashboardController::class, 'cashflow']);
     Route::get('/dashboard/allocation', [DashboardController::class, 'allocation']);
+
+    // ----- Reports (tidak pakai prefix) -----
+    Route::get('/reports/monthly-summary', [ReportController::class, 'monthlySummary']);
+    Route::get('/reports/category-allocation', [ReportController::class, 'categoryAllocation']);
+    Route::get('/reports/overview', [ReportController::class, 'overview']);
+
+        // ----- Recurring Transactions -----
+    Route::get('/recurring-transactions', [RecurringTransactionController::class, 'index']);
+    Route::post('/recurring-transactions', [RecurringTransactionController::class, 'store']);
+    Route::get('/recurring-transactions/{id}', [RecurringTransactionController::class, 'show']);
+    Route::put('/recurring-transactions/{id}', [RecurringTransactionController::class, 'update']);
+    Route::delete('/recurring-transactions/{id}', [RecurringTransactionController::class, 'destroy']);
 });
