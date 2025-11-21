@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 use App\Helpers\DateRangeHelper;
+use App\Services\SmartInsightService;
 
 class DashboardController extends Controller
 {
@@ -115,5 +116,39 @@ class DashboardController extends Controller
             ->values();
 
         return response()->json($rows);
+    }
+
+    public function smartInsight(Request $request)
+    {
+        $userId    = $request->user()->id;
+        $threshold = (int) $request->get('threshold', 20);
+
+        // Di endpoint dashboard, biasanya kita TIDAK mau spam notif tiap user buka halaman.
+        // Jadi fireNotification = false → hanya hitung & return data.
+        $result = SmartInsightService::checkMonthlySpendingChange(
+            $userId,
+            $threshold,
+            false // ⬅️ tidak kirim notif di sini
+        );
+
+        return response()->json($result);
+    }
+
+    public function smartSuggestions(Request $request)
+    {
+        $userId          = $request->user()->id;
+        $threshold       = (int) $request->get('threshold', 30);
+        $minAmount       = (int) $request->get('min_amount', 500000);
+
+        $suggestions = SmartInsightService::getCategorySuggestions(
+            $userId,
+            $threshold,
+            $minAmount
+        );
+
+        return response()->json([
+            'success'     => true,
+            'suggestions' => $suggestions,
+        ]);
     }
 }

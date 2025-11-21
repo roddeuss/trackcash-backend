@@ -98,6 +98,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/summary',   [DashboardController::class, 'summary']);
     Route::get('/dashboard/cashflow',  [DashboardController::class, 'cashflow']);
     Route::get('/dashboard/allocation', [DashboardController::class, 'allocation']);
+    Route::get('/dashboard/smart-insight', [DashboardController::class, 'smartInsight']);
+    Route::get('/dashboard/smart-suggestions', [DashboardController::class, 'smartSuggestions']);
 
     // ----- Reports (tidak pakai prefix) -----
     Route::get('/reports/monthly-summary', [ReportController::class, 'monthlySummary']);
@@ -110,4 +112,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/recurring-transactions/{id}', [RecurringTransactionController::class, 'show']);
     Route::put('/recurring-transactions/{id}', [RecurringTransactionController::class, 'update']);
     Route::delete('/recurring-transactions/{id}', [RecurringTransactionController::class, 'destroy']);
+
 });
