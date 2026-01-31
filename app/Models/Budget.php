@@ -39,4 +39,9 @@ class Budget extends Model
     {
         return $this->belongsTo(Category::class);
     }
+
+    public function scopeActive($query)
+    {
+        return $query->where($query->qualifyColumn('deleted'), false);
+    }
 }

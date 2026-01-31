@@ -24,6 +24,7 @@ class RecurringTransaction extends Model
         'end_date',        // recurring berhenti kapan (opsional)
         'next_run_at',     // kapan rule ini akan dijalankan berikutnya
         'is_active',       // aktif / nonaktif
+        'deleted',
     ];
 
     protected $casts = [
@@ -32,7 +33,13 @@ class RecurringTransaction extends Model
         'end_date' => 'date',
         'next_run_at' => 'datetime',
         'is_active' => 'boolean',
+        'deleted' => 'boolean',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->where($query->qualifyColumn('deleted'), false);
+    }
 
     // ============================
     //         RELATIONSHIP

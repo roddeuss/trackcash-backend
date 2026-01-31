@@ -25,12 +25,48 @@ class BudgetService
 
         $budgets = Budget::with('category')
             ->where('user_id', $userId)
-            ->where('deleted', false)
+            ->active()
+            ->get();
+
+        if ($budgets->isEmpty()) return [];
+
+        // pre-fetch windows for each budget to find min/max range
+        $windows = $budgets->mapWithKeys(fn($b) => [$b->id => BudgetHelper::getBudgetWindow($b)]);
+        $minStart = $windows->min(fn($w) => $w[0]);
+        $maxEnd   = $windows->max(fn($w) => $w[1]);
+
+        // fetch ALL transactions for this user within the "envelope" range of all budgets
+        $transactions = Transaction::active()
+            ->where('user_id', $userId)
+            ->whereBetween('transaction_date', [$minStart, $maxEnd])
+            ->select('category_id', 'amount', 'transaction_date')
             ->get();
 
         $results = [];
         foreach ($budgets as $b) {
-            $calc = self::compute($b);
+            $window = $windows[$b->id];
+            // aggregate in PHP to avoid DB calls
+            $spent = (float) $transactions->filter(function($t) use ($b, $window) {
+                return (int)$t->category_id === (int)$b->category_id 
+                    && $t->transaction_date->between($window[0], $window[1]);
+            })->sum(fn($t) => abs((float)$t->amount));
+
+            $spent     = round($spent, 2);
+            $amount    = (float) $b->amount;
+            $remaining = round(max(0, $amount - $spent), 2);
+            $progress  = $amount > 0 ? round(min(100, ($spent / $amount) * 100), 2) : 0.0;
+
+            $calc = [
+                'spent'     => $spent,
+                'remaining' => $remaining,
+                'progress'  => $progress,
+                'amount'    => $amount,
+                'window'    => [
+                    'start' => $window[0],
+                    'end'   => $window[1],
+                ],
+            ];
+
             $results[] = ['budget' => $b, 'calc' => $calc];
             self::maybeNotify($userId, $b, $calc, $threshold);
         }
@@ -48,7 +84,7 @@ class BudgetService
         $budgets = Budget::with('category')
             ->where('user_id', $userId)
             ->where('category_id', $categoryId)
-            ->where('deleted', false)
+            ->active()
             ->get();
 
         $results = [];
@@ -79,9 +115,8 @@ class BudgetService
         [$start, $end] = BudgetHelper::getBudgetWindow($b);
 
         // hanya hitung pengeluaran kategori itu dalam window
-        $spent = (float) Transaction::query()
+        $spent = (float) Transaction::active()
             ->where('transactions.user_id', $b->user_id)
-            ->where('transactions.deleted', false)
             ->where('transactions.category_id', $b->category_id)
             ->whereBetween('transactions.transaction_date', [$start, $end])
             ->select(DB::raw('SUM(ABS(transactions.amount)) as total'))
@@ -122,10 +157,9 @@ class BudgetService
         $end   = $calc['window']['end'];
 
         // Cegah notifikasi berulang dalam periode window yang sama
-        $existing = Notification::query()
+        $existing = Notification::active()
             ->where('user_id', $userId)
             ->where('type', 'budget_threshold')
-            ->where('deleted', false)
             // simpan notifikasi yang dibuat dalam window ini (created_at di antara window)
             ->whereBetween('created_at', [$start->toDateTimeString(), $end->toDateTimeString()])
             // data->budget_id == $b->id

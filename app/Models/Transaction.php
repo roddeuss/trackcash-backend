@@ -55,4 +55,9 @@ class Transaction extends Model
     {
         return $this->category && $this->category->type === 'expense';
     }
+
+    public function scopeActive($query)
+    {
+        return $query->where($query->qualifyColumn('deleted'), false);
+    }
 }

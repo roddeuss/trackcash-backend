@@ -50,6 +50,12 @@ class User extends Authenticatable
         if ($this->profile_picture && file_exists(public_path('profile/' . $this->profile_picture))) {
             return url('profile/' . $this->profile_picture);
         }
-        return url('profile/default.png'); // fallback kalau tidak ada foto
+        
+        // Cek jika default.png ada, jika tidak return null agar frontend fallback ke initials
+        if (file_exists(public_path('profile/default.png'))) {
+            return url('profile/default.png');
+        }
+
+        return null;
     }
 }

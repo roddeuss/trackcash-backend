@@ -36,4 +36,9 @@ class Asset extends Model
     {
         return $this->hasMany(Investment::class);
     }
+
+    public function scopeActive($query)
+    {
+        return $query->where($query->qualifyColumn('deleted'), false);
+    }
 }

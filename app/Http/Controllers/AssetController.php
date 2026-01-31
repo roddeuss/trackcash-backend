@@ -17,7 +17,7 @@ class AssetController extends Controller
         try {
             // Ambil aset + relasi type
             $assets = Asset::with('type')
-                ->where('deleted', false)
+                ->active()
                 ->get();
 
             return response()->json([
@@ -66,7 +66,7 @@ class AssetController extends Controller
     {
         try {
             $asset = Asset::with('type')
-                ->where('deleted', false)
+                ->active()
                 ->findOrFail($id);
 
             return response()->json([
@@ -93,7 +93,15 @@ class AssetController extends Controller
             'lot_size'   => 'sometimes|integer|min:1',
         ]);
 
-        $asset = Asset::findOrFail($id);
+        $asset = Asset::active()->findOrFail($id);
+
+        if ($asset->created_by !== Auth::id()) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Unauthorized: You can only update assets you created',
+            ], 403);
+        }
+
         $asset->update([
             'type_id'    => $request->type_id    ?? $asset->type_id,
             'asset_code' => $request->asset_code ?? $asset->asset_code,
@@ -111,7 +119,15 @@ class AssetController extends Controller
     public function destroy($id)
     {
         try {
-            $asset = Asset::findOrFail($id);
+            $asset = Asset::active()->findOrFail($id);
+
+            if ($asset->created_by !== Auth::id()) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Unauthorized: You can only delete assets you created',
+                ], 403);
+            }
+
             $asset->update([
                 'deleted'   => true,
                 'updated_by' => Auth::id(),

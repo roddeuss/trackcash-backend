@@ -51,11 +51,11 @@ class Notification extends Model
 
     public function scopeUnread($query)
     {
-        return $query->whereNull('read_at')->where('deleted', false);
+        return $query->whereNull('read_at')->active();
     }
 
-    public function scopeNotDeleted($query)
+    public function scopeActive($query)
     {
-        return $query->where('deleted', false);
+        return $query->where($query->qualifyColumn('deleted'), false);
     }
 }

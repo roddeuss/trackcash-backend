@@ -17,7 +17,7 @@ class NotificationController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Notification::forUser(Auth::id())->notDeleted()->orderByDesc('id');
+            $query = Notification::forUser(Auth::id())->active()->orderByDesc('id');
 
             if ($request->query('status') === 'unread') {
                 $query->unread();
@@ -67,7 +67,7 @@ class NotificationController extends Controller
     public function markRead($id)
     {
         try {
-            $notif = Notification::forUser(Auth::id())->notDeleted()->findOrFail($id);
+            $notif = Notification::forUser(Auth::id())->active()->findOrFail($id);
 
             if (is_null($notif->read_at)) {
                 $notif->update([

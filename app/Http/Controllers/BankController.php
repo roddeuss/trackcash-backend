@@ -21,7 +21,7 @@ class BankController extends Controller
         try {
             // Ambil semua bank milik user
             $banks = Bank::where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->orderBy('bank_name')
                 ->get();
 
@@ -38,7 +38,7 @@ class BankController extends Controller
             $movements = Transaction::query()
                 ->leftJoin('categories', 'transactions.category_id', '=', 'categories.id')
                 ->where('transactions.user_id', Auth::id())
-                ->where('transactions.deleted', false)
+                ->active()
                 ->whereIn('transactions.bank_id', $banks->pluck('id'))
                 ->groupBy('transactions.bank_id')
                 ->select(
@@ -85,7 +85,7 @@ class BankController extends Controller
         try {
             $bank = Bank::where('id', $id)
                 ->where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->first();
 
             if (!$bank) {
@@ -98,7 +98,7 @@ class BankController extends Controller
             $movement = Transaction::query()
                 ->leftJoin('categories', 'transactions.category_id', '=', 'categories.id')
                 ->where('transactions.user_id', Auth::id())
-                ->where('transactions.deleted', false)
+                ->active()
                 ->where('transactions.bank_id', $bank->id)
                 ->select(
                     DB::raw("
@@ -167,7 +167,7 @@ class BankController extends Controller
         try {
             $bank = Bank::where('id', $id)
                 ->where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->first();
 
             if (!$bank) {
@@ -208,7 +208,7 @@ class BankController extends Controller
         try {
             $bank = Bank::where('id', $id)
                 ->where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->first();
 
             if (!$bank) {

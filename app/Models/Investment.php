@@ -41,6 +41,11 @@ class Investment extends Model
         return $this->hasMany(InvestmentTransaction::class);
     }
 
+    public function scopeActive($query)
+    {
+        return $query->where($query->qualifyColumn('deleted'), false);
+    }
+
     // 📊 Hitung nilai beli total (cost basis)
     public function getTotalBuyValueAttribute()
     {

@@ -18,6 +18,7 @@ class RecurringTransactionController extends Controller
             $userId = $request->user()->id;
 
             $items = RecurringTransaction::where('user_id', $userId)
+                ->active()
                 ->orderByDesc('created_at')
                 ->get();
 
@@ -44,6 +45,7 @@ class RecurringTransactionController extends Controller
             $userId = $request->user()->id;
 
             $item = RecurringTransaction::where('user_id', $userId)
+                ->active()
                 ->findOrFail($id);
 
             return response()->json([
@@ -52,7 +54,8 @@ class RecurringTransactionController extends Controller
                 'data'    => $item,
             ], 200);
         } catch (Throwable $e) {
-            $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+            $status = ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) ? $e->getStatusCode() : 500;
+            if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) $status = 404;
 
             return response()->json([
                 'success' => false,
@@ -126,6 +129,7 @@ class RecurringTransactionController extends Controller
             $userId = $request->user()->id;
 
             $recurring = RecurringTransaction::where('user_id', $userId)
+                ->active()
                 ->findOrFail($id);
 
             $data = $request->validate([
@@ -170,9 +174,11 @@ class RecurringTransactionController extends Controller
                 'data'    => $recurring,
             ], 200);
         } catch (Throwable $e) {
-            $status = ($e instanceof \Illuminate\Validation\ValidationException)
-                ? 422
-                : (method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500);
+            $status = ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface)
+                ? $e->getStatusCode()
+                : 500;
+            if ($e instanceof \Illuminate\Validation\ValidationException) $status = 422;
+            if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) $status = 404;
 
             return response()->json([
                 'success' => false,
@@ -193,9 +199,10 @@ class RecurringTransactionController extends Controller
             $userId = $request->user()->id;
 
             $recurring = RecurringTransaction::where('user_id', $userId)
+                ->active()
                 ->findOrFail($id);
 
-            $recurring->delete();
+            $recurring->update(['deleted' => true]);
 
             return response()->json([
                 'success' => true,
@@ -203,7 +210,10 @@ class RecurringTransactionController extends Controller
                 'data'    => null,
             ], 200);
         } catch (Throwable $e) {
-            $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
+            $status = ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) 
+                ? $e->getStatusCode() 
+                : 500;
+            if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) $status = 404;
 
             return response()->json([
                 'success' => false,

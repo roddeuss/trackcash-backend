@@ -32,7 +32,7 @@ class BudgetController extends Controller
 
             $budgets = Budget::with('category')
                 ->where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->orderByDesc('id')
                 ->get();
 
@@ -44,85 +44,24 @@ class BudgetController extends Controller
             }
 
             $userId = Auth::id();
-
-            $budgets->transform(function (Budget $b) use ($threshold, $userId) {
-                [$start, $end] = BudgetHelper::getBudgetWindow($b);
-
-                // Total pengeluaran untuk kategori ini pada window budget
-                $spent = (float) Transaction::query()
-                    ->where('transactions.user_id', $userId)
-                    ->where('transactions.deleted', false)
-                    ->where('transactions.category_id', $b->category_id)
-                    ->whereBetween('transactions.transaction_date', [$start, $end])
-                    ->select(DB::raw('SUM(ABS(transactions.amount)) as total'))
-                    ->value('total');
-
-                $spent      = round($spent ?: 0, 2);
-                $remaining  = round(max(0, (float)$b->amount - $spent), 2);
-                $progress   = (float)$b->amount > 0
-                    ? round(min(100, ($spent / (float)$b->amount) * 100), 2)
-                    : 0.0;
-
-                // 🔔 Notifikasi "hampir over budget" (sekali per window)
-                try {
-                    if ((float)$b->amount > 0 && $spent >= ((float)$b->amount * $threshold)) {
-                        $windowStartKey = $start->toDateString();
-                        $windowEndKey   = $end->toDateString();
-
-                        $already = Notification::query()
-                            ->where('user_id', $userId)
-                            ->where('type', 'budget_threshold')
-                            ->where('is_read', false)
-                            ->where('data->budget_id', $b->id)
-                            ->where('data->window_start', $windowStartKey)
-                            ->where('data->window_end', $windowEndKey)
-                            ->exists();
-
-                        if (!$already) {
-                            $pct = $progress;
-                            $cat = optional($b->category)->name ?: '-';
-                            $msg = 'Budget kategori "'.$cat.'" sudah '.$pct.'% terpakai ('
-                                 . number_format($spent, 2, ',', '.') . ' dari '
-                                 . number_format((float)$b->amount, 2, ',', '.') . ').';
-
-                            NotificationService::create(
-                                $userId,
-                                'budget_threshold',
-                                'Budget Hampir Habis',
-                                $msg,
-                                [
-                                    'budget_id'    => $b->id,
-                                    'category_id'  => $b->category_id,
-                                    'window_start' => $windowStartKey,
-                                    'window_end'   => $windowEndKey,
-                                    'progress'     => $pct,
-                                    'spent'        => $spent,
-                                    'amount'       => (float)$b->amount,
-                                ],
-                                'warning',
-                                null
-                            );
-                        }
-                    }
-                } catch (\Throwable $nex) {
-                    Log::warning('Budget threshold notification failed: '.$nex->getMessage());
-                }
-
-                // Tambahkan properti terhitung ke model (agar ikut terkirim)
-                $b->spent     = $spent;
-                $b->remaining = $remaining;
-                $b->progress  = $progress;
-                $b->window    = [
-                    'start' => $start->toDateTimeString(),
-                    'end'   => $end->toDateTimeString(),
-                ];
-
+            $evaluated = \App\Services\BudgetService::evaluateForUser($userId, $threshold);
+            
+            // extract the results back to the original format expected by the frontend (if it just expects the budgets)
+            // Actually, evaluateForUser returns ['budget' => $b, 'calc' => $calc]
+            // We should map it to add calculated fields to the budget model itself
+            $data = collect($evaluated)->map(function($item) {
+                $b = $item['budget'];
+                $c = $item['calc'];
+                $b->spent     = $c['spent'];
+                $b->remaining = $c['remaining'];
+                $b->progress  = $c['progress'];
+                $b->window    = $c['window'];
                 return $b;
             });
 
             return response()->json([
                 'success' => true,
-                'data'    => $budgets,
+                'data'    => $data,
             ], 200);
         } catch (\Exception $e) {
             Log::error('Error fetching budgets', ['err' => $e]);
@@ -199,78 +138,16 @@ class BudgetController extends Controller
 
             $budget = Budget::with('category')
                 ->where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->findOrFail($id);
 
-            [$start, $end] = BudgetHelper::getBudgetWindow($budget);
-
-            $spent = (float) Transaction::query()
-                ->where('transactions.user_id', Auth::id())
-                ->where('transactions.deleted', false)
-                ->where('transactions.category_id', $budget->category_id)
-                ->whereBetween('transactions.transaction_date', [$start, $end])
-                ->select(DB::raw('SUM(ABS(transactions.amount)) as total'))
-                ->value('total');
-
-            $spent     = round($spent ?: 0, 2);
-            $remaining = round(max(0, (float)$budget->amount - $spent), 2);
-            $progress  = (float)$budget->amount > 0
-                ? round(min(100, ($spent / (float)$budget->amount) * 100), 2)
-                : 0;
-
-            // 🔔 Notifikasi untuk budget ini (sekali per window)
-            try {
-                if ((float)$budget->amount > 0 && $spent >= ((float)$budget->amount * $threshold)) {
-                    $windowStartKey = $start->toDateString();
-                    $windowEndKey   = $end->toDateString();
-
-                    $already = Notification::query()
-                        ->where('user_id', Auth::id())
-                        ->where('type', 'budget_threshold')
-                        ->where('is_read', false)
-                        ->where('data->budget_id', $budget->id)
-                        ->where('data->window_start', $windowStartKey)
-                        ->where('data->window_end', $windowEndKey)
-                        ->exists();
-
-                    if (!$already) {
-                        $pct = $progress;
-                        $cat = optional($budget->category)->name ?: '-';
-                        $msg = 'Budget kategori "'.$cat.'" sudah '.$pct.'% terpakai ('
-                             . number_format($spent, 2, ',', '.') . ' dari '
-                             . number_format((float)$budget->amount, 2, ',', '.') . ').';
-
-                        NotificationService::create(
-                            Auth::id(),
-                            'budget_threshold',
-                            'Budget Hampir Habis',
-                            $msg,
-                            [
-                                'budget_id'    => $budget->id,
-                                'category_id'  => $budget->category_id,
-                                'window_start' => $windowStartKey,
-                                'window_end'   => $windowEndKey,
-                                'progress'     => $pct,
-                                'spent'        => $spent,
-                                'amount'       => (float)$budget->amount,
-                            ],
-                            'warning',
-                            null
-                        );
-                    }
-                }
-            } catch (\Throwable $nex) {
-                Log::warning('Budget threshold notification (show) failed: '.$nex->getMessage());
-            }
-
+            $calc = \App\Services\BudgetService::evaluateOne($budget, $threshold);
+            
             $payload = $budget->toArray();
-            $payload['spent']     = $spent;
-            $payload['remaining'] = $remaining;
-            $payload['progress']  = $progress;
-            $payload['window']    = [
-                'start' => $start->toDateTimeString(),
-                'end'   => $end->toDateTimeString(),
-            ];
+            $payload['spent']     = $calc['spent'];
+            $payload['remaining'] = $calc['remaining'];
+            $payload['progress']  = $calc['progress'];
+            $payload['window']    = $calc['window'];
 
             return response()->json([
                 'success' => true,
@@ -302,7 +179,7 @@ class BudgetController extends Controller
 
         try {
             $budget = Budget::where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->findOrFail($id);
 
             $period     = $request->has('period') ? $request->period : $budget->period;

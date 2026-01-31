@@ -103,7 +103,8 @@ class ReportController extends Controller
 
         [$start, $end] = DateRangeHelper::getDateRange($range);
 
-        $rows = Transaction::where('user_id', $userId)
+        $rows = Transaction::active()
+            ->where('user_id', $userId)
             ->whereBetween('transaction_date', [$start, $end])
             ->whereHas('category', function ($q) {
                 $q->where('type', 'expense');

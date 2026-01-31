@@ -25,7 +25,7 @@ class InvestmentController extends Controller
                     },
                 ])
                 ->where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->get();
 
             return response()->json([
@@ -65,7 +65,7 @@ class InvestmentController extends Controller
             $investment = Investment::firstOrNew([
                 'user_id'  => Auth::id(),
                 'asset_id' => $request->asset_id,
-                'deleted'  => false,
+                'active'   => true,
             ]);
 
             $currentUnits = (float) ($investment->units ?? 0.0);
@@ -166,8 +166,8 @@ class InvestmentController extends Controller
                 : now();
             $txDateString = $txDate->toDateTimeString();
 
-            $investment = Investment::where('user_id', Auth::id())
-                ->where('deleted', false)
+            $investment = Investment::active()
+                ->where('user_id', Auth::id())
                 ->with('asset')
                 ->findOrFail($id);
 

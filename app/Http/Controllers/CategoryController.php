@@ -16,7 +16,7 @@ class CategoryController extends Controller
     {
         try {
             $categories = Category::where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->get();
 
             return response()->json([
@@ -73,7 +73,7 @@ class CategoryController extends Controller
     {
         try {
             $category = Category::where('user_id', Auth::id())
-                ->where('deleted', false)
+                ->active()
                 ->findOrFail($id);
 
             return response()->json([
